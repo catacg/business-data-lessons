@@ -4,6 +4,6 @@ Exploratory data analysis and regression on 5,400 podcasts: data quality checks,
 
 - **Full analysis (report):** [podcasts-analysis.md](podcasts-analysis.md)
 - **Source code (R Markdown):** [podcasts-analysis.Rmd](podcasts-analysis.Rmd)
-- **Article (Spanish):** [Cuando una gráfica miente](LINK-SUBSTACK)
+- **Article (Spanish):** [Cuando una gráfica miente](https://substack.com/home/post/p-220462364)
 
 *Dataset provided as part of a master's course assignment; not included in this repository.*

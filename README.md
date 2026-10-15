@@ -14,6 +14,6 @@ Each case has its own folder with the full analysis (report + R/Python code) and
 ## About
 
 By Catalina Cortés Gutiérrez, product manager and analytics consultant for SMEs.
-[Substack](LINK) · [LinkedIn](LINK)
+[Substack](https://substack.com/@catalinacortesg) · [LinkedIn](https://www.linkedin.com/in/catalina-cortes-gutierrez/)
 
 *Datasets come from university coursework and are not included unless permission has been granted.*

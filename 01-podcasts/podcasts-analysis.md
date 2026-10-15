@@ -543,7 +543,7 @@ as.data.frame(m.genre.diff_ci) %>%
   geom_linerange(colour = "magenta") +
   geom_vline(xintercept = 0, linetype = "dashed") +
   labs(
-    title = "Figure 2.1: Differences in Mean Daily Listens Between Genres",
+    title = "Figure 1.1: Differences in Mean Daily Listens Between Genres",
     subtitle = "Error bars are 95% CIs (Tukey-adjusted)",
     x = "Difference in mean daily listens",
     y = NULL
@@ -577,10 +577,10 @@ p.genre.raw <- ggplot(summary(m.genre.emm), aes(x = genre, y = emmean, ymin = lo
   geom_point(col = "magenta") +
   geom_linerange(col = "magenta") +
   ylim(3800, 5400) +
-  labs(title = "Figure 2.2: Estimated Means and Raw Data",
+  labs(title = "Figure 1.2: Estimated Means and Raw Data",
        subtitle = "Error bars are 95% CIs (too narrow to be visible at this scale)",
        x = "Podcast genre", y = "Mean Daily Listens",
-       caption = "Figure 2.2: Model-estimated mean daily listens (magenta) over raw daily listens\n(grey points), showing the spread of individual podcasts within each genre.") +
+       caption = "Figure 1.2: Model-estimated mean daily listens (magenta) over raw daily listens\n(grey points), showing the spread of individual podcasts within each genre.") +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0),
         plot.caption = element_text(hjust = 0))
@@ -590,9 +590,9 @@ print(p.genre.raw)
 
 <img src="podcasts-analysis_files/figure-gfm/my-plotEstimation-1.png" style="display: block; margin: auto;" />
 
-Figure 2.1 shows the estimated difference in mean daily listens between
+Figure 1.1 shows the estimated difference in mean daily listens between
 each pair of genres. None of the confidence intervals crosses zero,
-confirming that all three genres differ significantly. Figure 2.2
+confirming that all three genres differ significantly. Figure 1.2
 displays the estimated means alongside the raw data: while the genres
 differ on average, many individual podcasts perform similarly across
 genres.
@@ -849,8 +849,8 @@ sub.preds$listens.hat <- predict(m.interaction, newdata = sub.preds)
 ggplot(sub.preds, aes(x = subscribers, y = listens.hat, colour = genre, lty = genre)) +  
   geom_line(linewidth = 1) +  
   labs(
-    title = "Figure 2.3: Predicted Daily Listens by Genre and Subscriber Count",
-    caption = "Figure 2.3: Regression slopes illustrate how the effect of subscribers on daily reach is\nmoderated by genre. The shallower slope for Documentaries (p = .0116) indicates a lower\nreturn in listens per additional subscriber compared to Comedy.",
+    title = "Figure 1.3: Predicted Daily Listens by Genre and Subscriber Count",
+    caption = "Figure 1.3: Regression slopes illustrate how the effect of subscribers on daily reach is\nmoderated by genre. The shallower slope for Documentaries (p = .0116) indicates a lower\nreturn in listens per additional subscriber compared to Comedy.",
     colour = "Genre",  
     lty = "Genre",
     x = "Number of Subscribers",
@@ -865,7 +865,7 @@ ggplot(sub.preds, aes(x = subscribers, y = listens.hat, colour = genre, lty = ge
 
 <img src="podcasts-analysis_files/figure-gfm/my-plotPrediction-1.png" style="display: block; margin: auto;" />
 
-Figure 2.3 displays predicted daily listens generated from the final
+Figure 1.3 displays predicted daily listens generated from the final
 interaction model. To illustrate these trends, predicted values were
 calculated across the observed range of subscribers for each genre.
 
@@ -882,3 +882,117 @@ than for Comedy podcasts, suggesting that genre-specific engagement
 patterns must be accounted for to accurately predict reach.
 
 ------------------------------------------------------------------------
+
+## Figuras para el artículo en español
+
+``` r
+# Etiquetas en español y un color fijo por género para todas las figuras
+a_espanol <- function(x) fct_recode(x,
+  "Comedia" = "Comedy",
+  "Documental" = "Documentary",
+  "Noticias y cultura" = "News & Culture")
+
+colores_genero <- c("Comedia" = "#56B4E9",
+                    "Documental" = "#E69F00",
+                    "Noticias y cultura" = "#009E73")
+
+podcasts_es <- podcasts_no_zerosReviews %>%
+  mutate(genero = a_espanol(genre))
+
+miles <- scales::label_number(big.mark = ",")
+```
+
+``` r
+p.todos <- ggplot(podcasts_es, aes(x = subscribers, y = daily.listens)) +
+  geom_point(alpha = 0.15, colour = "grey60") +
+  geom_smooth(method = "lm", se = FALSE, colour = "black", linewidth = 1.2) +
+  scale_x_continuous(labels = miles, breaks = seq(0, 1200, by = 300),
+                     limits = c(0, 1200)) +
+  scale_y_continuous(labels = miles) +
+  labs(title = "Todos juntos: la tendencia baja",
+       x = "Suscriptores", y = "Escuchas diarias") +
+  theme_minimal(base_size = 13) +
+  theme(plot.margin = margin(10, 20, 10, 10))
+
+p.genero <- ggplot(podcasts_es, aes(x = subscribers, y = daily.listens, colour = genero)) +
+  geom_point(alpha = 0.15) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  scale_colour_manual(values = colores_genero) +
+  scale_x_continuous(labels = miles, breaks = seq(0, 1200, by = 300),
+                     limits = c(0, 1200)) +
+  scale_y_continuous(labels = miles) +
+  labs(title = "Separados por género: la tendencia sube",
+       x = "Suscriptores", y = "Escuchas diarias", colour = NULL) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom",
+        plot.margin = margin(10, 20, 10, 10))
+
+fig1 <- arrangeGrob(p.todos, p.genero, nrow = 1,
+                    top = grid::textGrob("Mismos datos, conclusión opuesta",
+                                         gp = grid::gpar(fontsize = 17, fontface = "bold")))
+grid::grid.draw(fig1)
+```
+
+![](podcasts-analysis_files/figure-gfm/fig1-paradoja-1.png)<!-- -->
+
+``` r
+ggsave("fig1-paradoja.png", fig1, width = 11, height = 5, dpi = 200, bg = "white")
+```
+
+``` r
+medias_genero <- as.data.frame(summary(m.genre.emm)) %>%
+  mutate(genero = a_espanol(genre))
+
+fig2 <- ggplot(medias_genero, aes(x = genero, y = emmean, colour = genero)) +
+  geom_jitter(data = podcasts_es, aes(x = genero, y = daily.listens),
+              alpha = 0.08, width = 0.2, inherit.aes = FALSE, colour = "grey60") +
+  geom_point(size = 4) +
+  geom_linerange(aes(ymin = lower.CL, ymax = upper.CL), linewidth = 1) +
+  geom_text(aes(label = miles(round(emmean))), nudge_x = 0.32,
+            size = 4.5, fontface = "bold", show.legend = FALSE) +
+  scale_colour_manual(values = colores_genero, guide = "none") +
+  scale_y_continuous(labels = miles) +
+  labs(title = "La comedia lidera en escuchas diarias",
+       subtitle = "Promedio por género (punto de color) sobre cada podcast (puntos grises)",
+       x = NULL, y = "Escuchas diarias") +
+  theme_minimal(base_size = 13)
+
+print(fig2)
+```
+
+![](podcasts-analysis_files/figure-gfm/fig2-genero-1.png)<!-- -->
+
+``` r
+ggsave("fig2-genero.png", fig2, width = 8, height = 5.5, dpi = 200, bg = "white")
+```
+
+``` r
+pred_es <- sub.preds %>%
+  mutate(genero = a_espanol(genre))
+
+etiquetas <- pred_es %>%
+  group_by(genero) %>%
+  slice_max(subscribers, n = 1)
+
+fig3 <- ggplot(pred_es, aes(x = subscribers, y = listens.hat, colour = genero)) +
+  geom_line(linewidth = 1.3) +
+  geom_text(data = etiquetas, aes(label = genero), hjust = -0.08,
+            size = 4.5, fontface = "bold") +
+  scale_colour_manual(values = colores_genero, guide = "none") +
+  scale_x_continuous(labels = miles, expand = expansion(mult = c(0.02, 0.25))) +
+  scale_y_continuous(labels = miles) +
+  labs(title = "Cada suscriptor rinde menos en documentales",
+       subtitle = "Escuchas diarias estimadas según los suscriptores (solo dentro del rango observado)",
+       caption = "Por cada 100 suscriptores: comedia ≈ +33 escuchas diarias; documental ≈ +25.",
+       x = "Suscriptores", y = "Escuchas diarias estimadas") +
+  theme_minimal(base_size = 13) +
+  theme(plot.caption = element_text(hjust = 0))
+
+print(fig3)
+```
+
+![](podcasts-analysis_files/figure-gfm/fig3-suscriptores-1.png)<!-- -->
+
+``` r
+ggsave("fig3-suscriptores.png", fig3, width = 9, height = 5.5, dpi = 200, bg = "white")
+```

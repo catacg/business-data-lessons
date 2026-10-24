@@ -1,0 +1,406 @@
+---
+title: "Household Expenditure: What Really Drives Food Spending?"
+author: "Catalina Cortes Gutierrez"
+date: '`r Sys.Date()`'
+output: github_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+This analysis looks at what predicts weekly food spending in 4,083 UK households. It supports article #3 of the *Business Data Lessons* series: **the largest coefficient in a regression is not necessarily the most important driver**.
+
+*Originally developed for a university statistics assignment and revised for publication. The dataset was provided by the course and is not included in this repository.*
+
+## Data dictionary
+
+Variable | Description
+------------- | -------------
+Kids | Number of children in the household
+HouseholdSize | Total number of people living in the household
+Sex | Gender of the survey respondent
+Vehicles | Number of vehicles owned by the household
+Food | Average weekly expenditure on food (£)
+Housing | Average weekly expenditure on accommodation (£), including mortgage or rent
+Alcohol | Average weekly expenditure on alcohol (£)
+Debt | Average weekly debt repayments (£), including credit cards and bank loans, excluding mortgages
+income_category | Household income level (Low, Medium, High)
+
+## 1. Load and check the data
+
+```{r libraries}
+library(Hmisc)      # rcorr()
+library(tidyverse)
+library(gridExtra)
+library(car)        # vif()
+```
+
+```{r load-data}
+householdExp <- read_csv("HouseholdExpenditure.csv")
+
+str(householdExp)
+
+# Categorical variables are consistent, with no duplicated labels
+lapply(householdExp[c("Sex", "income_category")], table)
+
+householdExp <- householdExp %>%
+  mutate(
+    Sex = factor(Sex),
+    income_category = factor(income_category, levels = c("Low", "Medium", "High"))
+  )
+
+summary(householdExp)
+
+# 120 households (2.9%) report zero debt repayments
+householdExp %>% filter(Debt == 0) %>% count()
+
+# Rows with missing values
+householdExp %>% filter(rowSums(is.na(.)) > 0) %>% as.data.frame()
+```
+
+## 2. Data cleaning
+
+```{r cleaning}
+# Remove the 6 rows with several missing values and the 8 rows missing Debt
+householdExp_filtered <- householdExp %>%
+  filter(!(rowSums(is.na(.)) > 1)) %>%
+  filter(!is.na(Debt))
+
+nrow(householdExp_filtered)   # 4,083 rows remain
+```
+
+Fourteen rows (0.34%) were removed. The 120 households with zero debt were kept: they are a real financial profile, not an error. Their food spending is close to the rest of the sample:
+
+```{r zero-debt}
+householdExp_filtered %>%
+  group_by(Zero_debt = Debt == 0) %>%
+  summarise(Households = n(), Mean_food = round(mean(Food), 2)) %>%
+  knitr::kable()
+```
+
+## 3. Distributions
+
+```{r plot-categorical, fig.height=2, fig.width=8}
+hInCat <- ggplot(householdExp_filtered, aes(x = income_category)) + geom_bar()
+hSex   <- ggplot(householdExp_filtered, aes(x = Sex)) + geom_bar()
+grid.arrange(hInCat, hSex, nrow = 1)
+```
+
+```{r plot-histograms, fig.height=7, fig.width=8}
+# Kids, HouseholdSize, Vehicles and Housing are right-skewed; Debt has a spike at zero
+hkids <- ggplot(householdExp_filtered) + geom_histogram(aes(x = Kids)) + labs(subtitle = "Kids")
+hhhs  <- ggplot(householdExp_filtered) + geom_histogram(aes(x = HouseholdSize)) + labs(subtitle = "HouseholdSize")
+hv    <- ggplot(householdExp_filtered) + geom_histogram(aes(x = Vehicles)) + labs(subtitle = "Vehicles")
+hhou  <- ggplot(householdExp_filtered) + geom_histogram(aes(x = Housing)) + labs(subtitle = "Housing (£)")
+ha    <- ggplot(householdExp_filtered) + geom_histogram(aes(x = Alcohol)) + labs(subtitle = "Alcohol (£)")
+hd    <- ggplot(householdExp_filtered) + geom_histogram(aes(x = Debt)) + labs(subtitle = "Debt (£)")
+hf    <- ggplot(householdExp_filtered) + geom_histogram(aes(x = Food)) + labs(subtitle = "Food (£)")
+grid.arrange(hkids, hhhs, hv, hhou, ha, hd, hf, nrow = 4)
+```
+
+```{r summary-table}
+# Note the very different spreads: Housing SD ≈ £54, Debt ≈ £19, Alcohol ≈ £3
+summary_table <- householdExp_filtered %>%
+  summarise(across(c(Kids, HouseholdSize, Vehicles, Food, Housing, Debt, Alcohol), list(
+    Median = ~median(.), Mean = ~mean(.), SD = ~sd(.), Min = ~min(.), Max = ~max(.)
+  ))) %>%
+  pivot_longer(everything(), names_to = c("Variable", ".value"), names_sep = "_") %>%
+  mutate(across(where(is.numeric), ~round(., 2)))
+
+knitr::kable(summary_table)
+```
+
+```{r plot-boxplots, fig.height=8, fig.width=9}
+# Upper-tail outliers in Kids, HouseholdSize, Housing and Debt look plausible and are kept
+gg.kids    <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = Kids)) + labs(subtitle = "Kids")
+gg.hhsize  <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = HouseholdSize)) + labs(subtitle = "HouseholdSize")
+gg.veh     <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = Vehicles)) + labs(subtitle = "Vehicles")
+gg.alcohol <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = Alcohol)) + labs(subtitle = "Alcohol (£)")
+gg.food    <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = Food)) + labs(subtitle = "Food (£)")
+gg.debt    <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = Debt)) + labs(subtitle = "Debt (£)")
+gg.housing <- ggplot(householdExp_filtered) + geom_boxplot(aes(y = Housing)) + labs(subtitle = "Housing (£)")
+
+# Median food spending is similar across sex and income groups
+gg.sex    <- ggplot(householdExp_filtered) + geom_boxplot(aes(x = Sex, y = Food)) + labs(title = "Food by sex")
+gg.income <- ggplot(householdExp_filtered) + geom_boxplot(aes(x = income_category, y = Food)) + labs(title = "Food by income")
+
+grid.arrange(gg.kids, gg.hhsize, gg.veh, gg.alcohol, gg.food, gg.debt, gg.housing, gg.sex, gg.income, nrow = 3)
+```
+
+## 4. Relationships between variables
+
+```{r plot-relationships, fig.height=4.5, fig.width=13}
+# Kids and HouseholdSize: almost flat slopes
+gg.kidsF <- ggplot(householdExp_filtered, aes(x = Kids, y = Food)) +
+  geom_jitter(alpha = 0.15, width = 0.05) + geom_smooth(method = "lm", linewidth = 1.5, se = FALSE)
+gg.hhsF <- ggplot(householdExp_filtered, aes(x = HouseholdSize, y = Food)) +
+  geom_jitter(alpha = 0.15, width = 0.05) + geom_smooth(method = "lm", linewidth = 1.5, se = FALSE)
+grid.arrange(gg.kidsF, gg.hhsF, nrow = 1)
+
+# Vehicles: flat slope. Debt: weak negative slope
+gg.vehF <- ggplot(householdExp_filtered, aes(x = Vehicles, y = Food)) +
+  geom_jitter(alpha = 0.15, width = 0.1) + geom_smooth(method = "lm", linewidth = 1.5, se = FALSE)
+gg.debtF <- ggplot(householdExp_filtered, aes(x = Debt, y = Food)) +
+  geom_jitter(alpha = 0.15, width = 0.1) + geom_smooth(method = "lm", linewidth = 1.5, se = FALSE)
+grid.arrange(gg.vehF, gg.debtF, nrow = 1)
+
+# Alcohol: the slope looks flat because alcohol varies very little between households (SD ≈ £3).
+# The regression below shows it is a significant predictor per £1, but a typical change is small.
+# Housing: clear positive relationship
+gg.alcF <- ggplot(householdExp_filtered, aes(x = Alcohol, y = Food)) +
+  geom_jitter(alpha = 0.15, width = 0.1) + geom_smooth(method = "lm", linewidth = 1.5, se = FALSE)
+gg.housF <- ggplot(householdExp_filtered, aes(x = Housing, y = Food)) +
+  geom_jitter(alpha = 0.15, width = 0.1) + geom_smooth(method = "lm", linewidth = 1.5, se = FALSE)
+grid.arrange(gg.alcF, gg.housF, nrow = 1)
+```
+
+```{r correlations}
+# Spearman correlation: robust to skewed distributions and outliers
+rcorr(as.matrix(select(householdExp_filtered,
+                       Food, Alcohol, Debt, Housing, HouseholdSize, Kids, Vehicles)),
+      type = "spearman")
+```
+
+Housing and Food have a moderate positive association ($r_s = .38, p < .001$). Debt and Food have a small negative association ($r_s = -.06, p < .001$), and Alcohol and Food a weak positive one ($r_s = .07, p < .001$).
+
+These correlations are with the outcome, so they say nothing about multicollinearity. Multicollinearity is about correlations *between predictors*, and it is checked with VIFs after fitting the model (section 5).
+
+**Why both approaches?** The correlations are exploratory: each one looks at a single pair of variables and ignores everything else. Conclusions and effect sizes come from the multiple regression in section 5, because it estimates the effect of each predictor while holding the others constant.
+
+## 5. Key drivers of food spending
+
+```{r model-main}
+m.food <- lm(Food ~ Alcohol + Debt + Housing + HouseholdSize +
+               Kids + Vehicles + income_category + Sex,
+             data = householdExp_filtered)
+
+summary(m.food)
+confint(m.food)
+
+# Multicollinearity check: all VIFs should be below 5
+vif(m.food)
+```
+
+The model is significant ($F(9, 4073) = 82.1, p < .001$, $N = 4,083$) and explains about 15% of the variation in food spending (adjusted $R^2 = 0.152$). Three variables are significant predictors, holding the others constant:
+
+- **Housing:** each extra £1 predicts £0.09 more on food (95% CI [0.08, 0.10]), $t(4073) = 26.24, p < .001$.
+- **Alcohol:** each extra £1 predicts £0.39 more on food (95% CI [0.27, 0.51]), $t(4073) = 6.22, p < .001$.
+- **Debt:** each extra £1 predicts £0.05 less on food (95% CI [-0.07, -0.03]), $t(4073) = -5.06, p < .001$.
+
+Household size, children, vehicles, income category and respondent sex are not significant ($p > .05$). All VIFs are below 5, so multicollinearity is not a problem.
+
+The intercept (£23.47) is not meaningful on its own: it describes a household with zero housing costs, zero people and zero vehicles, which does not exist.
+
+### Raw coefficients cannot be compared directly
+
+Alcohol has the largest coefficient (£0.39 per £1), but that does not make it the most important driver. The variables move on very different scales: £1 is a big change in alcohol spending and a tiny one in housing spending. To compare them fairly, multiply each coefficient by how much that variable typically varies (its standard deviation).
+
+```{r standardised-effects}
+key_vars <- c("Housing", "Alcohol", "Debt")
+
+std_effects <- tibble(
+  Variable    = key_vars,
+  Coefficient = coef(m.food)[key_vars],
+  SD          = sapply(householdExp_filtered[key_vars], sd)
+) %>%
+  mutate(
+    Effect_1SD   = Coefficient * SD,                          # £ change in food for a typical change
+    Std_beta     = Effect_1SD / sd(householdExp_filtered$Food) # fully standardised coefficient
+  ) %>%
+  arrange(desc(abs(Effect_1SD)))
+
+knitr::kable(std_effects, digits = c(0, 3, 2, 2, 3),
+             col.names = c("Variable", "Coefficient (per £1)", "SD (£)",
+                           "Effect of 1 SD change (£)", "Standardised beta"))
+```
+
+A typical change in housing spending (about £54) moves food spending by about **£4.9**. A typical change in alcohol spending (about £3) moves it by about **£1.2**, and in debt (about £19) by about **−£1.0**. **Housing is roughly four times as important as alcohol**, even though its coefficient is four times smaller.
+
+### Why are children and household size not significant?
+
+They are not significant even on their own, so the result is not caused by multicollinearity between them. In this data, they simply do not explain food spending.
+
+```{r kids-hhsize-alone}
+m.kids   <- lm(Food ~ Kids, data = householdExp_filtered)
+m.hhsize <- lm(Food ~ HouseholdSize, data = householdExp_filtered)
+
+tibble(
+  Model    = c("Food ~ Kids", "Food ~ HouseholdSize"),
+  Estimate = c(coef(m.kids)["Kids"], coef(m.hhsize)["HouseholdSize"]),
+  p_value  = c(coef(summary(m.kids))["Kids", "Pr(>|t|)"],
+               coef(summary(m.hhsize))["HouseholdSize", "Pr(>|t|)"])
+) %>%
+  knitr::kable(digits = 3)
+```
+
+### Model assumptions
+
+```{r model-diagnostics, fig.height=4.5, fig.width=10}
+# Residuals vs fitted: checks linearity and constant variance
+# Normal Q-Q: checks that residuals are approximately normal
+par(mfrow = c(1, 2))
+plot(m.food, which = 1:2)
+par(mfrow = c(1, 1))
+```
+
+### Robustness check: households with zero debt
+
+Debt has a spike at zero (120 households). These values are plausible (many households have no loans or credit card debt), so they are not treated as errors. A spike in a *predictor* does not by itself break the regression assumptions, which concern the residuals (checked above). Still, to make sure these households do not drive the results, the model is refitted without them:
+
+```{r robustness-zero-debt}
+m.food.nozero <- lm(Food ~ Alcohol + Debt + Housing + HouseholdSize +
+                      Kids + Vehicles + income_category + Sex,
+                    data = filter(householdExp_filtered, Debt > 0))
+
+tibble(
+  Variable          = key_vars,
+  All_households    = coef(m.food)[key_vars],
+  Without_zero_debt = coef(m.food.nozero)[key_vars]
+) %>%
+  knitr::kable(digits = 3, col.names = c("Variable", "All households (n = 4,083)",
+                                         "Without zero debt (n = 3,963)"))
+```
+
+The conclusions hold: all three predictors remain significant and housing remains the strongest driver. The debt effect becomes larger without the zero-debt households (about −£0.08 vs −£0.05 per £1), so including them makes the debt estimate slightly conservative. They are kept because they are real households.
+
+## 6. Is the effect of debt the same at different levels of alcohol spending?
+
+Debt and Alcohol are centred (mean subtracted) before creating the interaction. This avoids the artificial multicollinearity that appears when two raw variables are multiplied, without changing the interaction test.
+
+```{r model-interaction}
+householdExp_filtered <- householdExp_filtered %>%
+  mutate(
+    Debt_c    = Debt - mean(Debt),
+    Alcohol_c = Alcohol - mean(Alcohol)
+  )
+
+m.interaction <- lm(Food ~ Debt_c * Alcohol_c + Housing + HouseholdSize +
+                      Kids + Vehicles + income_category + Sex,
+                    data = householdExp_filtered)
+
+summary(m.interaction)
+vif(m.interaction)
+```
+
+There is no significant interaction between debt and alcohol spending ($t(4072) = -0.50, p = .62$). The negative effect of debt on food spending is the same whatever a household spends on alcohol, and adding the interaction does not improve the model (adjusted $R^2$ 0.1515 vs 0.1517). The simpler main-effects model is kept.
+
+```{r plot-predictions, fig.height=5.5, fig.width=7}
+food.preds <- tibble(
+  Alcohol = rep(c(10, 17, 24), 3),            # low, typical and high alcohol spending
+  Debt = rep(c(20, 60, 100), each = 3),
+  Housing = median(householdExp_filtered$Housing),
+  HouseholdSize = 2,
+  Kids = 0,
+  Vehicles = 1,
+  income_category = factor("Medium", levels = c("Low", "Medium", "High")),
+  Sex = factor("male", levels = levels(householdExp_filtered$Sex))
+) %>%
+  mutate(food.hat = predict(m.food, newdata = .))
+
+ggplot(food.preds, aes(x = Debt, y = food.hat, colour = factor(Alcohol))) +
+  geom_line(linewidth = 1.2) +
+  scale_colour_manual(values = c("#5B6474", "#2F5D8A", "#C4572B"),
+                      labels = c("£10", "£17", "£24")) +
+  labs(
+    title = "Predicted food spending by debt and alcohol spending",
+    subtitle = "Typical household: median housing, 2 people, no children, 1 vehicle, medium income",
+    colour = "Weekly alcohol",
+    x = "Weekly debt repayments (£)",
+    y = "Predicted weekly food spending (£)",
+    caption = "Parallel lines: debt lowers food spending by the same amount at every level of alcohol\nspending (interaction p = .62)."
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold"),
+        plot.caption = element_text(hjust = 0))
+```
+
+## 7. Figures for the article (Spanish)
+
+```{r article-figures, include=FALSE}
+dir.create("figures", showWarnings = FALSE)
+
+marfil  <- "#F8F5EF"
+azul_os <- "#13233F"
+gris    <- "#5B6474"
+colores <- c(Vivienda = "#2F5D8A", Alcohol = "#C4572B", Deuda = "#5B6474")
+nombres <- c(Housing = "Vivienda", Alcohol = "Alcohol", Debt = "Deuda")
+
+tema_marca <- theme_minimal(base_size = 13) +
+  theme(
+    plot.background    = element_rect(fill = marfil, colour = NA),
+    panel.grid.minor   = element_blank(),
+    plot.title         = element_text(face = "bold", colour = azul_os, size = 16),
+    plot.subtitle      = element_text(colour = gris, margin = margin(b = 12)),
+    plot.caption       = element_text(colour = gris, hjust = 0, size = 9),
+    axis.text          = element_text(colour = azul_os),
+    strip.text         = element_text(face = "bold", colour = azul_os, hjust = 0, size = 12),
+    plot.margin        = margin(15, 20, 15, 15)
+  )
+
+formato_libras <- function(x) sprintf("%s£%.2f", ifelse(x < 0, "−", ""), abs(x))
+
+# Figure 1: raw coefficient vs effect of a typical change
+fig1_data <- std_effects %>%
+  transmute(
+    Variable = factor(nombres[Variable], levels = c("Vivienda", "Alcohol", "Deuda")),
+    `Lo que dice el reporte: cambio en comida por cada £1 adicional` = Coefficient,
+    `La comparación justa: cambio en comida por un cambio típico` = Effect_1SD
+  ) %>%
+  pivot_longer(-Variable, names_to = "Medida", values_to = "Valor") %>%
+  mutate(
+    Medida   = factor(Medida, levels = unique(Medida)),
+    Etiqueta = formato_libras(Valor)
+  )
+
+fig1 <- ggplot(fig1_data, aes(x = Variable, y = Valor, fill = Variable)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = 0, colour = azul_os, linewidth = 0.4) +
+  geom_text(aes(label = Etiqueta, vjust = ifelse(Valor < 0, 1.6, -0.6)),
+            colour = azul_os, size = 4.5, fontface = "bold") +
+  facet_wrap(~Medida, scales = "free_y", labeller = label_wrap_gen(width = 32)) +
+  scale_fill_manual(values = colores, guide = "none") +
+  scale_y_continuous(expand = expansion(mult = c(0.25, 0.2))) +
+  labs(
+    title = "El coeficiente más alto no es el factor más importante",
+    subtitle = "Alcohol tiene el coeficiente más alto, pero Vivienda mueve unas 4 veces más\nel gasto en comida porque varía mucho más entre hogares",
+    x = NULL, y = NULL,
+    caption = "Gasto semanal en libras (£). Regresión lineal múltiple, 4.083 hogares del Reino Unido.\nCambio típico = una desviación estándar."
+  ) +
+  tema_marca +
+  theme(axis.text.y = element_blank(), panel.grid.major = element_blank(),
+        axis.text.x = element_text(size = 12, face = "bold"))
+
+ggsave("figures/fig1-coeficiente-vs-efecto.png", fig1, width = 9, height = 6, dpi = 300, bg = marfil)
+
+# Figure 2: why it happens - typical range of each variable on the same £ scale
+fig2_data <- householdExp_filtered %>%
+  select(Housing, Alcohol, Debt) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Valor") %>%
+  group_by(Variable) %>%
+  summarise(p25 = quantile(Valor, 0.25), Mediana = median(Valor), p75 = quantile(Valor, 0.75)) %>%
+  mutate(
+    Variable = factor(nombres[Variable], levels = rev(c("Vivienda", "Deuda", "Alcohol"))),
+    Rango    = paste0("£", round(p25), "–£", round(p75))
+  )
+
+fig2 <- ggplot(fig2_data, aes(y = Variable, colour = Variable)) +
+  geom_segment(aes(x = p25, xend = p75, yend = Variable), linewidth = 6, lineend = "round") +
+  geom_point(aes(x = Mediana), colour = azul_os, size = 3) +
+  geom_text(aes(x = p75, label = Rango), hjust = -0.25, colour = azul_os, size = 4.2) +
+  scale_colour_manual(values = colores, guide = "none") +
+  scale_x_continuous(labels = function(x) paste0("£", x), limits = c(0, 420),
+                     breaks = seq(0, 400, 100)) +
+  labs(
+    title = "Por qué pasa: el gasto en alcohol casi no varía entre hogares",
+    subtitle = "Rango típico del gasto semanal (50 % central de los hogares). El punto es la mediana.",
+    x = NULL, y = NULL,
+    caption = "Fuente: 4.083 hogares del Reino Unido."
+  ) +
+  tema_marca +
+  theme(panel.grid.major.y = element_blank(),
+        axis.text.y = element_text(size = 12, face = "bold"))
+
+ggsave("figures/fig2-rango-tipico.png", fig2, width = 9, height = 4.5, dpi = 300, bg = marfil)
+```

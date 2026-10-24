@@ -8,7 +8,7 @@ Each case has its own folder with the full analysis (report + R/Python code) and
 |---|------|--------|---------|
 | 1 | [Podcasts](01-podcasts/) | Split your data by group before trusting a trend (Simpson's paradox) | [ES](LINK-SUBSTACK) |
 | 2 | [London Underground](https://github.com/catacg/business-data-lessons/tree/main/02-london-underground) | Is a difference between two groups real or just chance? | Coming soon |
-| 3 | Household expenditure | Coming soon | Coming soon |
+| 3 | [Household expenditure](https://github.com/catacg/business-data-lessons/tree/main/03-household-expenditure) | Coming soon | Coming soon |
 | 4 | Credit | Coming soon | Coming soon |
 
 ## About

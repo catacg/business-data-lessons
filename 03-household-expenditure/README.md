@@ -20,8 +20,9 @@ Housing is about four times as important as alcohol.
 
 | File | Description |
 |---|---|
-| `household-analysis.Rmd` | Full analysis in R: data checks, regression, standardised effects, diagnostics, robustness check and interaction test |
-| `household-analysis.md` | Rendered version with all outputs and plots (open this one to read on GitHub) |
+| `HouseholdExpenditure.Rmd` | Full analysis in R: data checks, regression, standardised effects, diagnostics, robustness check and interaction test |
+| `HouseholdExpenditure.md` | Rendered version with all outputs and plots (open this one to read on GitHub) |
+| `HouseholdExpenditure_files/` | Plots used by the rendered version |
 | `figures/` | Figures used in the article (in Spanish) |
 
 ## Methods
